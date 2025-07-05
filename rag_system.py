@@ -4,9 +4,8 @@ import os
 import torch
 from langchain.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-# Explicitly import from langchain_community
-from langchain_community.embeddings import HuggingFaceEmbeddings # ADDED this line
-from langchain_community.vectorstores import Chroma # ADDED this line
+from langchain_community.embeddings import HuggingFaceEmbeddings # This line
+from langchain_community.vectorstores import Chroma # This line
 
 import config
 
@@ -23,7 +22,7 @@ class RAGSystem:
         documents = []
         if not os.path.exists(config.DATA_DIR):
             print(f"Data directory '{config.DATA_DIR}' not found. Please create it and add PDF files.")
-            return # Exit if data directory is missing, RAG won't work
+            return
 
         for file_name in os.listdir(config.DATA_DIR):
             if file_name.endswith(".pdf"):
