@@ -76,10 +76,13 @@ while True:
         return_tensors="pt"
     ).to(device)
 
+    # Manually create attention_mask from input_ids (Corrected approach)
+    attention_mask = (input_ids != tokenizer.pad_token_id).long()
+
     # Generate a response
     generated_ids = model.generate(
         input_ids,
-        attention_mask=input_ids.attention_mask, # ADDED: Pass the attention_mask
+        attention_mask=attention_mask, # Use the manually created attention_mask
         max_new_tokens=256,
         pad_token_id=tokenizer.pad_token_id,
         no_repeat_ngram_size=3,
