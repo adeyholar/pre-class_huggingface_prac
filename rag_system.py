@@ -2,10 +2,11 @@
 
 import os
 import torch
-from langchain.document_loaders import PyPDFLoader
+# Update imports to langchain_community and specific integration packages
+from langchain_community.document_loaders import PyPDFLoader # Updated import
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings # This line
-from langchain_community.vectorstores import Chroma # This line
+from langchain_huggingface.embeddings import HuggingFaceEmbeddings # Updated import
+from langchain_chroma import Chroma # Updated import
 
 import config
 
@@ -57,7 +58,7 @@ class RAGSystem:
             print("Loaded existing Chroma DB.")
         else:
             self.vectorstore = Chroma.from_documents(documents=texts, embedding=embeddings, persist_directory=config.CHROMA_DB_DIR)
-            self.vectorstore.persist()
+            # self.vectorstore.persist() # REMOVED: Chroma now persists automatically
             print("Created and persisted new Chroma DB.")
 
         self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": config.RETRIEVER_K})

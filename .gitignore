@@ -2,3 +2,6 @@ data/
 chroma_db/
 env/
 *.env
+AI/
+_pycache/
+__pycache__/
