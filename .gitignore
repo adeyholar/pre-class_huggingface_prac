@@ -5,3 +5,6 @@ env/
 AI/
 _pycache/
 __pycache__/
+build/
+dist/
+*.egg-info/
