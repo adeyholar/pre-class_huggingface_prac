@@ -3,6 +3,7 @@
 import streamlit as st
 import torch
 import os
+import uuid # To generate unique session IDs
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_huggingface.llms import HuggingFacePipeline
@@ -12,13 +13,14 @@ from langchain_chroma import Chroma
 # Import our modular components
 from llm_manager import LLMManager
 from rag_system import RAGSystem
+from history_manager import HistoryManager # NEW: Import HistoryManager
 import config
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(
     page_title="Local LLM RAG Chatbot",
     page_icon="🤖",
-    layout="centered",
+    layout="centered", # Can be "wide" for more space
     initial_sidebar_state="auto"
 )
 
@@ -92,7 +94,6 @@ st.markdown("Ask me anything about the documents in your `data` folder!")
 
 # --- Session State Initialization ---
 # Initialize session state variables with None or default values first
-# This helps Pylance understand that these attributes will exist
 if "llm_manager" not in st.session_state:
     st.session_state.llm_manager = None
 if "transformers_pipeline" not in st.session_state:
@@ -113,9 +114,13 @@ if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "history_manager" not in st.session_state: # NEW: HistoryManager instance
+    st.session_state.history_manager = HistoryManager()
+if "session_id" not in st.session_state: # NEW: Current chat session ID
+    st.session_state.session_id = str(uuid.uuid4()) # Generate a new UUID for the session
 
 
-# Perform heavy initialization only once
+# --- Initial Load of LLM and RAG System (only once) ---
 if st.session_state.llm_manager is None:
     with st.spinner("Initializing LLM... This may take a moment."):
         st.session_state.llm_manager = LLMManager()
@@ -142,14 +147,29 @@ if st.session_state.rag_system is None:
             st.warning("No RAG documents loaded. Falling back to general chat mode (LLM only).")
             st.session_state.qa_chain = None
 
+# --- Function to load chat history for a session ---
+def load_session_history(session_id_to_load):
+    st.session_state.session_id = session_id_to_load
+    loaded_messages = st.session_state.history_manager.load_history(session_id_to_load)
+    st.session_state.messages = loaded_messages
+    # Re-populate LangChain memory from loaded messages
+    st.session_state.memory.clear()
+    for msg in loaded_messages:
+        if msg["role"] == "user":
+            st.session_state.memory.chat_memory.add_user_message(msg["content"])
+        else:
+            st.session_state.memory.chat_memory.add_ai_message(msg["content"])
+    st.rerun()
 
-# Display chat messages from history on app rerun
+# --- Display chat messages from history on app rerun ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
 # --- Chat Input and Response Generation ---
 if prompt := st.chat_input("Ask a question..."):
+    # Save user message to DB and session state
+    st.session_state.history_manager.save_message(st.session_state.session_id, "user", prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -157,6 +177,7 @@ if prompt := st.chat_input("Ask a question..."):
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             try:
+                response_text = ""
                 if st.session_state.qa_chain:
                     result = st.session_state.qa_chain.invoke({"question": prompt})
                     response_text = result["answer"]
@@ -171,43 +192,41 @@ if prompt := st.chat_input("Ask a question..."):
                             page_info = f"Page: {doc.metadata.get('page', 'N/A')}"
                             st.markdown(f"- {source_info} ({page_info})")
                 else:
-                    # Ensure tokenizer and transformers_pipeline are not None before use
                     if st.session_state.tokenizer is None or st.session_state.transformers_pipeline is None:
                         response_text = "Error: LLM not fully initialized. Please refresh the page."
                         st.error(response_text)
                     else:
                         chat_history_for_llm = st.session_state.memory.chat_memory.messages + [{"role": "user", "content": prompt}]
-                        # Pylance fix: Add explicit check for tokenizer before calling its method
                         formatted_input = st.session_state.tokenizer.apply_chat_template(
                             chat_history_for_llm,
                             tokenize=False,
                             add_generation_prompt=True
                         )
-                        # Pylance fix: Add explicit check for transformers_pipeline before calling it
                         response_text = st.session_state.transformers_pipeline(formatted_input)[0]['generated_text']
                         st.markdown(response_text)
+                        # Manually add to memory for LLM-only mode (already handled by LangChain memory for qa_chain)
                         st.session_state.memory.chat_memory.add_user_message(prompt)
-                        st.session_state.memory.chat_memory.add_ai_message(response_text)
+                        st.session_state.memory.add_ai_message(response_text) # Use add_ai_message here
 
             except Exception as e:
                 response_text = f"An error occurred: {e}"
                 st.error(response_text)
+            # Save bot message to DB and session state
+            st.session_state.history_manager.save_message(st.session_state.session_id, "assistant", response_text)
             st.session_state.messages.append({"role": "assistant", "content": response_text})
 
-# --- Sidebar for Status/Info (Optional) ---
+
+# --- Sidebar for Status/Info and Session Management ---
 with st.sidebar:
     st.header("Application Status")
     st.write(f"LLM Model: `{config.LLM_MODEL_NAME.split('/')[-1]}`")
-    # Pylance fix: Check if device is not None before accessing it
     if st.session_state.device is not None:
         st.write(f"Device: `{st.session_state.device}`")
     else:
         st.write("Device: Not initialized")
 
     st.write(f"RAG Enabled: {'Yes' if st.session_state.qa_chain else 'No'}")
-    # Pylance fix: Check if rag_system and vectorstore are not None before accessing
     if st.session_state.rag_system and st.session_state.rag_system.vectorstore:
-        # Pylance fix: Add explicit check before calling .get()
         if hasattr(st.session_state.rag_system.vectorstore, 'get'):
             st.write(f"Documents Loaded: {len(st.session_state.rag_system.vectorstore.get()['documents'])} chunks")
         else:
@@ -216,13 +235,44 @@ with st.sidebar:
         st.write("Documents Loaded: N/A (RAG not enabled)")
 
     st.markdown("---")
+    st.header("Chat Sessions")
+
+    # Get all existing session IDs
+    all_session_ids = st.session_state.history_manager.get_all_session_ids()
+    # Add current session ID if it's not in the list (e.g., brand new session)
+    if st.session_state.session_id not in all_session_ids:
+        all_session_ids.insert(0, st.session_state.session_id) # Add to top
+
+    # Display session selection
+    selected_session_id = st.selectbox(
+        "Select a chat session:",
+        options=all_session_ids,
+        index=all_session_ids.index(st.session_state.session_id) if st.session_state.session_id in all_session_ids else 0,
+        format_func=lambda x: f"Session {x[:8]}..." if x != st.session_state.session_id else f"Current Session {x[:8]}..."
+    )
+
+    # Load selected session if different from current
+    if selected_session_id != st.session_state.session_id:
+        load_session_history(selected_session_id)
+
+    # Button to start a new session
+    if st.button("Start New Session"):
+        st.session_state.session_id = str(uuid.uuid4())
+        st.session_state.messages = []
+        st.session_state.memory.clear()
+        st.rerun()
+
+    # Button to clear current session history
+    if st.button("Clear Current Session History"):
+        st.session_state.history_manager.clear_history(st.session_state.session_id)
+        st.session_state.messages = []
+        st.session_state.memory.clear()
+        st.rerun()
+
+    st.markdown("---")
     st.markdown("Developed by Your Name/Company")
     st.markdown("---")
-    if st.button("Clear Chat History"):
-        st.session_state.messages = []
-        if st.session_state.memory: # Check if memory exists before clearing
-            st.session_state.memory.clear()
-        st.rerun()
+
 
 # --- Footer (Optional) ---
 st.markdown("""
