@@ -4,9 +4,10 @@ import os
 import torch
 # Update imports to langchain_community and specific integration packages
 from langchain_community.document_loaders import PyPDFLoader # Updated import
+from langchain_community.document_loaders import TextLoader # NEW: Import TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_huggingface.embeddings import HuggingFaceEmbeddings # Updated import
-from langchain_chroma import Chroma # Updated import
+from langchain_huggingface.embeddings import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 
 import config
 
@@ -26,18 +27,28 @@ class RAGSystem:
             return
 
         for file_name in os.listdir(config.DATA_DIR):
+            file_path = os.path.join(config.DATA_DIR, file_name)
             if file_name.endswith(".pdf"):
-                file_path = os.path.join(config.DATA_DIR, file_name)
-                print(f"Loading document: {file_path}")
+                print(f"Loading PDF document: {file_path}")
                 try:
                     loader = PyPDFLoader(file_path)
                     documents.extend(loader.load())
                 except Exception as e:
-                    print(f"Error loading {file_path}: {e}")
+                    print(f"Error loading PDF {file_path}: {e}")
+            elif file_name.endswith(".txt"): # NEW: Handle .txt files
+                print(f"Loading Text document: {file_path}")
+                try:
+                    loader = TextLoader(file_path)
+                    documents.extend(loader.load())
+                except Exception as e:
+                    print(f"Error loading Text file {file_path}: {e}")
+            else:
+                print(f"Skipping unsupported file type: {file_name}")
+
 
         if not documents:
-            print(f"No PDF documents found in '{config.DATA_DIR}'. RAG will not function.")
-            print("Please place some PDF files in the 'data' directory.")
+            print(f"No supported documents found in '{config.DATA_DIR}'. RAG will not function.")
+            print("Please place some PDF or TXT files in the 'data' directory.")
             return
 
         text_splitter = RecursiveCharacterTextSplitter(
@@ -58,7 +69,6 @@ class RAGSystem:
             print("Loaded existing Chroma DB.")
         else:
             self.vectorstore = Chroma.from_documents(documents=texts, embedding=embeddings, persist_directory=config.CHROMA_DB_DIR)
-            # self.vectorstore.persist() # REMOVED: Chroma now persists automatically
             print("Created and persisted new Chroma DB.")
 
         self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": config.RETRIEVER_K})
