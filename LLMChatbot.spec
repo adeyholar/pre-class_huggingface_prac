@@ -14,35 +14,46 @@ a = Analysis(
         ('D:\\AI\\Gits\\pre-class_huggingface_prac\\config.py', '.'), # Include config.py
         ('D:\\AI\\Gits\\pre-class_huggingface_prac\\llm_manager.py', '.'), # Include llm_manager.py
         ('D:\\AI\\Gits\\pre-class_huggingface_prac\\rag_system.py', '.'), # Include rag_system.py
-        ('D:\\AI\\Gits\\pre-class_huggingface_prac\\web_app.py', '.'), # Include web_app.py
-        # Add a placeholder for the SQLite DB if it exists, otherwise it will be created on first run
-        ('D:\\AI\\Gits\\pre-class_huggingface_prac\\chat_history.db', '.'),
+        ('D:\\AI\\Gits\\pre-class_huggingface_prac\\web_app.py', '.'), # Include web_app.py - IMPORTANT: ensure this is copied to the root of the bundle
+        ('D:\\AI\\Gits\\pre-class_huggingface_prac\\chat_history.db', '.'), # Include SQLite DB
     ],
     hiddenimports=[
-        'transformers.models.auto.tokenization_auto', # Common for AutoTokenizer
-        'transformers.models.auto.modeling_auto',     # Common for AutoModelForCausalLM
-        'transformers.pipelines',                     # For pipeline function
-        'accelerate',                                 # Ensure accelerate is bundled
-        'bitsandbytes',                               # Crucial for 4-bit quantization
-        'bitsandbytes.cuda_setup.main',               # Specific bitsandbytes import
-        'langchain_community.document_loaders',       # For PyPDFLoader, TextLoader
-        'langchain_huggingface.llms',                 # For HuggingFacePipeline
-        'langchain_huggingface.embeddings',           # For HuggingFaceEmbeddings
-        'langchain_chroma',                           # For Chroma
-        'langchain.chains',                           # For ConversationalRetrievalChain
-        'langchain.memory',                           # For ConversationBufferMemory
-        'pypdf',                                      # For PyPDFLoader dependency
-        'sentence_transformers',                      # For embedding model
-        'sqlite3',                                    # For HistoryManager
-        'uuid',                                       # For session IDs
-        'streamlit',                                  # Ensure Streamlit itself is bundled
-        'asyncio', 'uvloop', 'httpcore', 'httpx', 'anyio', # Common async/networking deps for Streamlit/LangChain
-        'pydantic', 'pydantic_core',                  # LangChain dependencies
-        'numpy', 'scipy', 'sklearn',                  # Common scientific computing deps
-        'tokenizers', 'regex', 'requests', 'tqdm', 'filelock', 'typing_extensions', # Common Hugging Face deps
-        'networkx', 'jinja2', 'fsspec', 'sympy', 'mpmath', 'pillow', 'MarkupSafe', # Torch/other deps
-        'charset_normalizer', 'idna', 'urllib3', 'certifi', # Requests deps
-        'psutil', 'pyyaml',                           # Accelerate/other deps
+        'transformers.models.auto.tokenization_auto',
+        'transformers.models.auto.modeling_auto',
+        'transformers.pipelines',
+        'accelerate',
+        'bitsandbytes',
+        'bitsandbytes.cuda_setup.main',
+        'langchain_community.document_loaders',
+        'langchain_huggingface.llms',
+        'langchain_huggingface.embeddings',
+        'langchain_chroma',
+        'langchain.chains',
+        'langchain.memory',
+        'pypdf',
+        'sentence_transformers',
+        'sqlite3',
+        'uuid',
+        'streamlit',
+        'streamlit.web.cli', # IMPORTANT: Add this for Streamlit's internal CLI
+        'streamlit.web.bootstrap', # IMPORTANT: Add this
+        'streamlit.web.server', # IMPORTANT: Add this
+        'asyncio', 'uvloop', 'httpcore', 'httpx', 'anyio',
+        'pydantic', 'pydantic_core',
+        'numpy', 'scipy', 'sklearn',
+        'tokenizers', 'regex', 'requests', 'tqdm', 'filelock', 'typing_extensions',
+        'networkx', 'jinja2', 'fsspec', 'sympy', 'mpmath', 'pillow', 'MarkupSafe',
+        'charset_normalizer', 'idna', 'urllib3', 'certifi',
+        'psutil', 'pyyaml',
+        'click', # Streamlit/Flask dependency
+        'werkzeug', # Streamlit/Flask dependency
+        'watchdog', # Streamlit dependency for file watching
+        'fastapi', 'uvicorn', 'starlette', # If you ever use FastAPI
+        'pyarrow', # Often needed by pandas/data processing
+        'pandas', # If you use pandas
+        'matplotlib', # If you use matplotlib
+        'PIL', # Pillow dependency
+        'packaging', # Common dependency
     ],
     hookspath=[],
     hooksconfig={},
@@ -56,18 +67,11 @@ a = Analysis(
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # Add binaries for bitsandbytes (Crucial for GPU)
-# You might need to adjust these paths based on your Conda environment's actual DLL locations
-# Look in D:\ai\conda\envs\llm-local-chatbot3.11\Lib\site-packages\bitsandbytes\
-# and D:\ai\conda\envs\llm-local-chatbot3.11\Library\bin\
-# for .dll files related to CUDA and bitsandbytes.
-# This is highly dependent on your specific bitsandbytes installation.
-# If you get errors about missing DLLs, you'll need to find them and add them here.
-# Example (adjust as needed):
+# Verify this path: D:\ai\conda\envs\llm-local-chatbot3.11\Lib\site-packages\bitsandbytes\
 a.binaries += [
     ('libbitsandbytes_cuda121.dll', 'D:\\ai\\conda\\envs\\llm-local-chatbot3.11\\Lib\\site-packages\\bitsandbytes\\libbitsandbytes_cuda121.dll', 'BINARY'),
-    # You might also need CUDA-related DLLs if they are not picked up automatically
-    # e.g., ('cublas64_12.dll', 'C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.5\\bin\\cublas64_12.dll', 'BINARY'),
-    # You'll need to check your CUDA installation path for these.
+    # Add any other missing CUDA DLLs if you encounter errors.
+    # Example: ('cublas64_12.dll', 'C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.5\\bin\\cublas64_12.dll', 'BINARY'),
 ]
 
 
@@ -85,12 +89,10 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_info_in_exe=True,
-    console=False, # Set to True for debugging console, False for no console
+    console=True, # TEMPORARILY set to True for debugging! Change to False for final no-console app.
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
     cipher=block_cipher,
-    # If you remove --windowed from the pyinstaller command, set console=True here
-    # If you keep --windowed, set console=False here
 )
